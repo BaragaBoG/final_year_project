@@ -1,0 +1,450 @@
+package com.example.toxicr0ak.chatapp;
+
+import android.bluetooth.BluetoothAssignedNumbers;
+import android.content.Intent;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.support.v7.app.AppCompatActivity;
+import android.util.Base64;
+import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
+import android.widget.ListView;
+import android.widget.Toast;
+
+import java.io.BufferedReader;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.security.InvalidKeyException;
+import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.SignatureException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
+import java.util.ArrayList;
+import javax.crypto.Cipher;
+import javax.crypto.KeyAgreement;
+import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+
+public class messageScreen extends AppCompatActivity {
+    static String ipadr = null;
+    static String username;
+    static String self;
+    static ArrayList<String> displayMsg = new ArrayList<>();
+    static boolean bool = false;
+    static InetAddress ip;
+    static PublicKey othersRSAPK;
+    static PublicKey othersDHPK;
+    static PrivateKey selfRSAPriv;
+    static PrivateKey selfDHPriv;
+    static byte[] secretKey;
+    static String secretKeySpec;
+    static SecretKey secretKeyDHforAES;
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_message_screen);
+
+        Intent intent = getIntent();
+        username = intent.getStringExtra("username");
+        self = intent.getStringExtra("self");
+        ipadr = intent.getStringExtra("ipadr");
+
+        new getSelfKeys().execute();
+        new getTheirKeys().execute();
+        new doDHAgreement().execute();
+
+        ArrayList<String> messages = intent.getStringArrayListExtra("messages");
+        ListView listView = findViewById(R.id.listview);
+        if (messages != null) {
+            ArrayAdapter<String> arrayAdapter = new ArrayAdapter<>(messageScreen.this, android.R.layout.simple_list_item_1, messages);
+            listView.setAdapter(arrayAdapter);
+        }
+        try {
+            ip = InetAddress.getByName(ipadr);
+        } catch (Exception e) {
+            System.out.println("Error is "+e.getMessage());
+        }
+        listenClient var = new listenClient();
+        var.start();
+        new java.util.Timer().schedule(
+                new java.util.TimerTask() {
+                    @Override
+                    public void run() {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                ListView listView = findViewById(R.id.listview);
+                                ArrayAdapter<String> arrayAdapter = new ArrayAdapter<>(messageScreen.this, android.R.layout.simple_list_item_1, displayMsg);
+                                listView.setAdapter(arrayAdapter);
+                            }
+                        });
+                    }
+                },
+                1000
+        );
+    }
+
+    public class getSelfKeys extends AsyncTask<Void, Void, Void>{
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+            DatabaseHelper databaseHelper = new DatabaseHelper(messageScreen.this);
+            ArrayList<byte[]> selfKeyList = databaseHelper.extractSelfKeys();
+            byte[] rsaPriv = selfKeyList.get(0);
+            byte[] dhPriv = selfKeyList.get(1);
+            try{
+                KeyFactory dhkeyFactory = KeyFactory.getInstance("DH");
+                PKCS8EncodedKeySpec pkcs8EncodedKeySpec = new PKCS8EncodedKeySpec(dhPriv);
+                selfDHPriv = dhkeyFactory.generatePrivate(pkcs8EncodedKeySpec);
+                System.out.println("selfdhpriv is"+selfDHPriv);
+
+                KeyFactory rsaKeyFactory = KeyFactory.getInstance("RSA");
+                PKCS8EncodedKeySpec pkcs8EncodedKeySpec1 = new PKCS8EncodedKeySpec(rsaPriv);
+                selfRSAPriv = rsaKeyFactory.generatePrivate(pkcs8EncodedKeySpec1);
+                System.out.println("selfrsapriv is"+selfRSAPriv);
+            }
+            catch (Exception e){
+                e.printStackTrace();
+            }
+            return null;
+        }
+    }
+
+    public class getTheirKeys extends AsyncTask<Void, Void, Void>{
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+            try{
+                Socket socket = new Socket("192.168.0.123", 25000);
+                secretKeySpec = "Bar12345Bar12345";
+                System.out.println("Connected to server");
+                InputStream inputStream = socket.getInputStream();
+                System.out.println("After inputstream");
+                BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+                System.out.println("after bufferedreader");
+                OutputStream outputStream = socket.getOutputStream();
+                System.out.println("after outputstream");
+                PrintWriter printWriter = new PrintWriter(outputStream);
+                System.out.println("after printwrtier");
+                printWriter.println("7");
+                printWriter.flush();
+                String serverRes;
+                serverRes = bufferedReader.readLine();
+                if (serverRes.equals("7")){
+                    printWriter.println(username);
+                    printWriter.flush();
+                    DataInputStream dataInputStream = new DataInputStream(inputStream);
+                    byte[] userSignedDHPub = readDataIn(dataInputStream);
+                    byte[] userDHPub = readDataIn(dataInputStream);
+                    byte[] userSignedRSAPub = readDataIn(dataInputStream);
+                    byte[] userRSAPub = readDataIn(dataInputStream);
+                    byte[] serverRSAPub = readDataIn(dataInputStream);
+                    KeyFactory dhkeyFactory = KeyFactory.getInstance("DH");
+                    KeyFactory rsakeyFactory = KeyFactory.getInstance("RSA");
+                    X509EncodedKeySpec x509EncodedKeySpec2 = new X509EncodedKeySpec(userDHPub);
+                    PublicKey restoredDHPub = dhkeyFactory.generatePublic(x509EncodedKeySpec2);
+                    X509EncodedKeySpec x509EncodedKeySpec4 = new X509EncodedKeySpec(userRSAPub);
+                    PublicKey restoredRSAPub = rsakeyFactory.generatePublic(x509EncodedKeySpec4);
+                    X509EncodedKeySpec x509EncodedKeySpec5 = new X509EncodedKeySpec(serverRSAPub);
+                    PublicKey restoredServerRSAPub = rsakeyFactory.generatePublic(x509EncodedKeySpec5);
+                    boolean dhverify = verifySign(userSignedDHPub, restoredServerRSAPub, restoredDHPub);
+                    boolean rsaverify = verifySign(userSignedRSAPub, restoredServerRSAPub, restoredRSAPub);
+                    if (dhverify & rsaverify){
+                        othersDHPK = restoredDHPub;
+                        othersRSAPK = restoredRSAPub;
+                        System.out.println("Receipient's DHPK and RSAPK have been received, verified and stored");
+                        System.out.println(Base64.encodeToString(othersDHPK.getEncoded(),Base64.DEFAULT|Base64.NO_WRAP));
+                    }
+                    else{
+                        System.out.println("Key authentication failed");
+                    }
+                }
+            }
+            catch (Exception e){
+                e.printStackTrace();
+            }
+            return null;
+        }
+    }
+
+    static boolean verifySign(byte[] signedkey, PublicKey rsaPK, PublicKey dhPK) throws NoSuchAlgorithmException, InvalidKeyException, SignatureException {
+        Signature sign = Signature.getInstance("SHA1WithRSA");
+        sign.initVerify(rsaPK);
+        sign.update(dhPK.getEncoded());
+        return(sign.verify(signedkey));
+    }
+
+    static byte[] readDataIn (DataInputStream dataInputStream) throws IOException {
+        byte[] whateverByte = new byte[dataInputStream.readInt()];
+        dataInputStream.readFully(whateverByte);
+        return whateverByte;
+    }
+
+    public class doDHAgreement extends AsyncTask<Void, Void, Void>{
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+            try{
+                KeyAgreement keyAgreement = KeyAgreement.getInstance("DiffieHellman");
+                keyAgreement.init(selfDHPriv);
+                keyAgreement.doPhase(othersDHPK, true);
+                secretKeyDHforAES = keyAgreement.generateSecret("AES");
+                System.out.println("Length of secretkey is: "+secretKeyDHforAES.getEncoded().length);
+
+            }
+            catch (Exception e){
+                e.printStackTrace();
+            }
+            return null;
+        }
+    }
+
+    private static byte[] encryptWithAES(String string) {
+        byte[] encryptedBytes = null;
+        try{
+            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+            keyGen.init(128);
+            SecretKey secretkeyspec = keyGen.generateKey();
+            String iv = "RandomInitVector";
+            IvParameterSpec ivParameterSpec = new IvParameterSpec(iv.getBytes("UTF-8"));
+            SecretKeySpec SecretKeySpec = new SecretKeySpec(secretKeySpec.getBytes(),"AES");
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5PADDING");
+            cipher.init(Cipher.ENCRYPT_MODE,SecretKeySpec,ivParameterSpec);
+            encryptedBytes = cipher.doFinal(string.getBytes("UTF-8"));
+        }
+        catch (Exception e){
+            e.printStackTrace();
+        }
+        return encryptedBytes;
+    }
+
+    public static String decryptWithAES(byte[] encryptedBytes){
+        String dStr = null;
+        byte[] plaintextBytes;
+        try{
+            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+            keyGen.init(128);
+            SecretKey key = keyGen.generateKey();
+            String iv = "RandomInitVector";
+            IvParameterSpec ivParameterSpec = new IvParameterSpec(iv.getBytes("UTF-8"));
+            SecretKeySpec SecretKeySpec = new SecretKeySpec(secretKeySpec.getBytes(),"AES");
+            Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5PADDING");
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec,ivParameterSpec);
+            plaintextBytes = cipher.doFinal(encryptedBytes);
+            dStr = new String(plaintextBytes);
+        }
+        catch (Exception e){
+            e.printStackTrace();
+        }
+        return dStr;
+    }
+
+    public static String getHexString(byte[] b) throws Exception {
+        String result = "";
+        for (int i=0; i < b.length; i++) {
+            result += Integer.toString( ( b[i] & 0xff ) + 0x100, 16).substring( 1 );
+        }
+        return result;
+    }
+
+    public static String doHMACSHA256(byte[] strBytes, String key){
+        String hmac = null;
+        byte[] hmacBytes = null;
+        SecretKey hmacSecretKey = new SecretKeySpec(key.getBytes(),"HmacSHA256");
+        try {
+            Mac HMAC = Mac.getInstance("HmacSHA256");
+            HMAC.init(hmacSecretKey);
+            hmacBytes = HMAC.doFinal(strBytes);
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (InvalidKeyException e) {
+            e.printStackTrace();
+        }
+        try {
+            hmac = getHexString(hmacBytes);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return hmac;
+    }
+
+    public static void write(PrintWriter printWriter, String msg) {
+        printWriter.println(msg);
+        printWriter.flush();
+    }
+
+    public static class checkStatus extends AsyncTask<Void, Void, Void>{
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+            try{
+                bool = ip.isReachable(1);
+            }
+            catch (Exception e){
+                e.printStackTrace();
+            }
+            return null;
+        }
+    }
+
+    public void clickBtn(View view) {
+        EditText editText = findViewById(R.id.editText);
+        ListView listView = findViewById(R.id.listview);
+        String unadulterated = editText.getText().toString();
+        byte[] encrypted = null;
+        try{
+            encrypted = encryptWithAES(unadulterated);
+        }
+        catch(Exception e){
+            e.printStackTrace();
+        }
+        String msg = self+":"+username;
+        new checkStatus().execute();
+        try {
+            if (bool){
+                talkClient var = new talkClient(msg);
+                var.start();
+                displayMsg.add("Message sent: " + unadulterated);
+                ArrayAdapter<String> arrayAdapter = new ArrayAdapter<>(messageScreen.this, android.R.layout.simple_list_item_1, displayMsg);
+                listView.setAdapter(arrayAdapter);
+                bool = false;
+            } else {
+                talkServer var = new talkServer(msg,encrypted);
+                var.start();
+                displayMsg.add("Message sent: " + unadulterated);
+                ArrayAdapter<String> arrayAdapter = new ArrayAdapter<>(messageScreen.this, android.R.layout.simple_list_item_1, displayMsg);
+                listView.setAdapter(arrayAdapter);
+                bool = false;
+            }
+            editText.setText("");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+
+class listenClient extends Thread {
+
+    public void run(){
+        try{
+            String msg;
+            ServerSocket serverSocket = new ServerSocket(30000);
+            System.out.println("serversock is listening...");
+            Socket socket = serverSocket.accept();
+            System.out.println("Socket connected");
+            InputStream inputStream = socket.getInputStream();
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+            PrintWriter printWriter = new PrintWriter(socket.getOutputStream());
+            DataInputStream dataInputStream = new DataInputStream(socket.getInputStream());
+            while (true){
+            if (bufferedReader.readLine().equals("8.5")){
+                System.out.println("bufferedreadline within listenclient is 8.5");
+                printWriter.println("8.5");
+                printWriter.flush();
+                byte[] encryptedBytes = new byte[dataInputStream.readInt()];
+                dataInputStream.readFully(encryptedBytes);
+                System.out.println("encrypted bytes have been read");
+                String receivedHMAC = bufferedReader.readLine();
+                System.out.println("receivedHMAC is "+receivedHMAC);
+                String selfCalcHMAC = messageScreen.doHMACSHA256(encryptedBytes,messageScreen.secretKeySpec);
+                System.out.println("selfcalcHMAC is "+ selfCalcHMAC);
+                if (receivedHMAC.equals(selfCalcHMAC)){
+                    String plaintext = messageScreen.decryptWithAES(encryptedBytes);
+                    System.out.println("plaintext is "+plaintext);
+                    messageScreen.displayMsg.add("Message received: "+plaintext);
+                }
+                }
+            }
+        }
+        catch (Exception e){
+            System.out.println("Error is "+e.getMessage());
+        }
+    }
+}
+
+class talkClient extends Thread {
+    private String send;
+
+    talkClient(String msg){
+        this.send = msg;
+    }
+
+    public void run(){
+        try{
+            Socket socket = new Socket(messageScreen.ipadr,30000);
+            System.out.println("Socket connected");
+            InputStream inputStream = socket.getInputStream();
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+            OutputStream outputStream = socket.getOutputStream();
+            PrintWriter printWriter = new PrintWriter(outputStream);
+            messageScreen.write(printWriter, send);
+            System.out.println("Message "+send+" has been sent");
+            String input;
+            if ((input = bufferedReader.readLine())!=null){
+                messageScreen.displayMsg.add(messageScreen.username+": "+input);
+                System.out.println("Message received "+input+ " has been appended to display list.");
+            }
+        }
+        catch (Exception e){
+            System.out.println(e.getMessage());
+        }
+    }
+}
+
+class talkServer extends Thread {
+    private String initial;
+    private byte[] encryptedBytes;
+    private String hmac;
+
+    talkServer(String msg, byte[] bytes){
+        this.initial = msg;
+        this.encryptedBytes = bytes;
+    }
+
+    public void run(){
+        try{
+            Socket socket = new Socket("192.168.0.123",25000);
+            System.out.println("Socket connected");
+            InputStream inputStream = socket.getInputStream();
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+            OutputStream outputStream = socket.getOutputStream();
+            PrintWriter printWriter = new PrintWriter(outputStream);
+            messageScreen.write(printWriter, "8");
+            DataOutputStream dataOutputStream = new DataOutputStream(socket.getOutputStream());
+            String input;
+            if ((input = bufferedReader.readLine()).equals("8")){
+                messageScreen.write(printWriter, initial);
+                System.out.println("Message "+initial+" has been sent");
+                if (bufferedReader.readLine().equals("8.1")){
+                    dataOutputStream.writeInt(encryptedBytes.length);
+                    dataOutputStream.write(encryptedBytes);
+                    hmac = messageScreen.doHMACSHA256(encryptedBytes, messageScreen.secretKeySpec);
+                    printWriter.println(hmac);
+                    printWriter.flush();
+                    System.out.println("encryptedbytes and its hmac have been sent to server");
+                }
+            }
+        }
+        catch (Exception e){
+            System.out.println(e.getMessage());
+        }
+    }
+}
+
+
