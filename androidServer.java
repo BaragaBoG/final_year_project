@@ -47,7 +47,7 @@ public class andoidServer {
 	
 	
 	public static ArrayList<Object> getUserKeys (String username)throws Exception{
-		Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "vallari98");
+		Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "************");
 		ArrayList<Object> keysArray = new ArrayList<Object>();
 		String query = "SELECT DHPub, RSAPub FROM androidtable WHERE Username = ?";
 		PreparedStatement ps =  conn.prepareStatement(query);
