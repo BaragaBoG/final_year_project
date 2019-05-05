@@ -65,7 +65,7 @@ public class andoidServer {
 	
 	
 	public static ArrayList<String> getUserInfo(String username)throws Exception{
-		Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "vallari98");
+		Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "*********");
 		String query = "SELECT IP FROM androidtable WHERE username = ?";
 		PreparedStatement ps = conn.prepareStatement(query);
 		ps.setString(1, username);
@@ -92,7 +92,7 @@ public class andoidServer {
 	
 	public static String getIp(String username) throws SQLException { //1
 		String ip = null;
-		final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "vallari98");
+		final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "**********");
 		String query = "SELECT IP FROM androidtable WHERE USERNAME = ?";
 		PreparedStatement ps = con.prepareStatement(query);
 		ps.setString(1, username);
@@ -105,7 +105,7 @@ public class andoidServer {
 	
 	public static String getName(String ipadr) throws SQLException { //1
 		String name = null;
-		final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "vallari98");
+		final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "**********");
 		String query = "SELECT Username FROM androidtable WHERE IP = ?";
 		PreparedStatement ps = con.prepareStatement(query);
 		ps.setString(1, ipadr);
@@ -122,7 +122,7 @@ public class andoidServer {
 		if (verification==true) {
 			String hashedPwd = doHash(pwd);
 			System.out.println("Hashed Pwd is "+hashedPwd);
-			final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "vallari98");
+			final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "*********");
 			String query = "INSERT INTO androidtable(username, password, IP, DHPub, RSAPub) VALUES (?,?,?,?,?)";
 			PreparedStatement ps = con.prepareStatement(query);
 			ps.setString(1, usrname);
@@ -139,7 +139,7 @@ public class andoidServer {
 	public static boolean signIn(String usrname, String pwd, String ip) throws Exception{//3
 		boolean succ = false;
 		String hashedPwd = doHash(pwd);
-		final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "vallari98");
+		final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "**********");
 		String query = "SELECT username, password, ip FROM androidtable WHERE USERNAME = ?";
 		PreparedStatement ps = con.prepareStatement(query);
 		ps.setString(1, usrname);
@@ -250,7 +250,7 @@ public class andoidServer {
 		random = new SecureRandom();
 		try {
 			KeyPair rsaPair = genRSAKeyPair(random);
-			final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "vallari98");
+			final Connection con = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "*********");
 			String query = "INSERT INTO serverrsakeys(rsaPriv, rsaPub) VALUES (?, ?)";
 			PreparedStatement ps = con.prepareStatement(query);
 			ps.setBytes(1, rsaPair.getPrivate().getEncoded());
@@ -538,7 +538,7 @@ class sSock implements Runnable{
 						byte[] serverRSAPub2 = null;
 						byte[] userDHPK;
 						byte[] userRSAPK;
-						Connection conn2 = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "vallari98");						
+						Connection conn2 = DriverManager.getConnection("jdbc:mysql://localhost:3306/test", "root", "********");						
 						String serverRSAQuery2 = "SELECT rsaPriv, rsaPub FROM serverrsakeys ORDER BY ID DESC LIMIT 1";						
 						PreparedStatement rsaPS2 = conn2.prepareStatement(serverRSAQuery2);
 						ResultSet rsaResultSet2 = rsaPS2.executeQuery();
