@@ -52,8 +52,6 @@ public class messageScreen extends AppCompatActivity {
     static PublicKey othersDHPK;
     static PrivateKey selfRSAPriv;
     static PrivateKey selfDHPriv;
-    static byte[] secretKey;
-    static String secretKeySpec;
     static SecretKey secretKeyDHforAES;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -131,8 +129,7 @@ public class messageScreen extends AppCompatActivity {
         @Override
         protected Void doInBackground(Void... voids) {
             try{
-                Socket socket = new Socket("192.168.0.123", 25000);
-                secretKeySpec = "Bar12345Bar12345";
+                Socket socket = new Socket("192.168.0.123", 25000);            
                 System.out.println("Connected to server");
                 InputStream inputStream = socket.getInputStream();
                 System.out.println("After inputstream");
